@@ -1,1 +1,0 @@
-# tugas-kka-fikri
