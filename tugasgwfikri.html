@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TrashTrack — Smart Waste Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --ink:#1C2B1F;
+    --forest:#173A2B;
+    --moss:#4C7A5C;
+    --organic:#5A8F3C;   /* green bin */
+    --recycle:#2D6E8E;   /* blue bin */
+    --residual:#E2A32D;  /* amber warning */
+    --alert:#C4432B;     /* red alert */
+    --paper:#F3F1E7;
+    --paper-dim:#E7E3D2;
+    --line:#CCC6AE;
+    --card:#FDFCF6;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Space Grotesk',sans-serif;
+    min-height:100vh;
+  }
+  .noise{
+    position:fixed; inset:0; pointer-events:none; opacity:.035; z-index:0;
+    background-image:radial-gradient(var(--ink) 1px, transparent 1px);
+    background-size:3px 3px;
+  }
+  header{
+    position:relative; z-index:1;
+    background:var(--forest);
+    color:var(--paper);
+    padding:22px 32px;
+    display:flex; align-items:center; justify-content:space-between;
+    border-bottom:4px solid var(--organic);
+  }
+  .brand{display:flex; align-items:center; gap:14px;}
+  .brand-mark{
+    width:40px;height:40px; border-radius:10px;
+    background:linear-gradient(135deg, var(--organic), var(--recycle));
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Archivo Black',sans-serif; font-size:18px; color:var(--forest);
+    flex-shrink:0;
+  }
+  h1{font-family:'Archivo Black',sans-serif; font-size:20px; letter-spacing:.5px; margin:0;}
+  .brand small{display:block; font-size:11px; letter-spacing:2px; opacity:.65; margin-top:2px; text-transform:uppercase;}
+  .clock{font-family:'JetBrains Mono',monospace; font-size:13px; opacity:.8; text-align:right;}
+  .clock span{display:block;}
+
+  main{position:relative; z-index:1; max-width:1200px; margin:0 auto; padding:36px 28px 60px;}
+
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:3px;
+    text-transform:uppercase; color:var(--moss); margin:0 0 6px;
+  }
+  .section-title{font-family:'Archivo Black',sans-serif; font-size:22px; margin:0 0 20px;}
+
+  .grid{display:grid; grid-template-columns: 1.1fr 1.4fr; gap:24px; align-items:start;}
+  @media (max-width:880px){ .grid{grid-template-columns:1fr;} }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:24px;
+  }
+  .card h3{
+    font-family:'Archivo Black',sans-serif; font-size:14px; letter-spacing:.5px;
+    margin:0 0 16px; text-transform:uppercase; display:flex; align-items:center; gap:8px;
+  }
+  .tag{
+    font-family:'JetBrains Mono',monospace; font-size:10px; background:var(--paper-dim);
+    padding:2px 8px; border-radius:20px; color:var(--moss); letter-spacing:1px;
+  }
+
+  /* Form */
+  label{display:block; font-size:12px; font-weight:600; margin:14px 0 6px; color:var(--forest);}
+  label:first-of-type{margin-top:0;}
+  .field-row{display:flex; align-items:center; gap:10px;}
+  input[type=range]{flex:1; accent-color:var(--organic); height:4px;}
+  .readout{
+    font-family:'JetBrains Mono',monospace; font-weight:700; font-size:15px;
+    min-width:64px; text-align:right; color:var(--forest);
+  }
+  .hint{font-size:11px; color:var(--moss); margin-top:4px; line-height:1.5;}
+  button.primary{
+    margin-top:20px; width:100%; padding:13px; border:none; border-radius:10px;
+    background:var(--forest); color:var(--paper); font-family:'Space Grotesk',sans-serif;
+    font-weight:700; font-size:14px; letter-spacing:.3px; cursor:pointer;
+    transition:transform .12s ease, background .2s ease;
+  }
+  button.primary:hover{background:var(--organic); transform:translateY(-1px);}
+  button.primary:active{transform:translateY(0);}
+
+  /* Status indicator */
+  .status-box{
+    border-radius:14px; padding:22px; text-align:center; transition:background .4s ease, color .4s ease;
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+  }
+  .status-box .icon{font-size:34px;}
+  .status-box .label{font-family:'Archivo Black',sans-serif; font-size:17px; letter-spacing:.3px;}
+  .status-box .sub{font-family:'JetBrains Mono',monospace; font-size:11px; opacity:.85;}
+
+  /* Bin gauge (signature element) */
+  .bin-wrap{display:flex; justify-content:center; margin-top:16px;}
+  svg#binGauge{width:120px; height:150px;}
+
+  /* Chart */
+  .chart-card{grid-column:span 1;}
+  canvas#liveChart{max-height:280px;}
+
+  /* History */
+  .history-card{margin-top:24px;}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  thead th{
+    text-align:left; font-family:'JetBrains Mono',monospace; font-size:10.5px;
+    letter-spacing:1px; text-transform:uppercase; color:var(--moss);
+    border-bottom:2px solid var(--line); padding:8px 10px;
+  }
+  tbody td{padding:10px; border-bottom:1px solid var(--line); font-family:'JetBrains Mono',monospace;}
+  tbody tr:hover{background:var(--paper-dim);}
+  .pill{padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700; color:var(--paper); display:inline-block;}
+  .empty-row td{text-align:center; color:var(--moss); font-style:italic; padding:24px;}
+
+  footer{
+    position:relative; z-index:1; text-align:center; padding:20px; font-size:11px;
+    color:var(--moss); font-family:'JetBrains Mono',monospace; letter-spacing:.5px;
+  }
+</style>
+</head>
+<body>
+<div class="noise"></div>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark">TT</div>
+    <div>
+      <h1>FikriTrashTrack</h1>
+      <small>Smart Waste Monitoring</small>
+    </div>
+  </div>
+  <div class="clock">
+    <span id="clockTime">--:--:--</span>
+    <span id="clockDate">-- --- ----</span>
+  </div>
+</header>
+
+<main>
+  <p class="eyebrow">Bin Node · TPS-04 · Kelurahan Sampangan</p>
+  <h2 class="section-title">Dashboard Pemantauan Tempat Sampah Pintar</h2>
+
+  <div class="grid">
+    <!-- LEFT: Input form + Status -->
+    <div>
+      <div class="card">
+        <h3>Form Input Data <span class="tag">Simulasi Sensor</span></h3>
+
+        <label for="fillLevel">Ketinggian Sampah (%)</label>
+        <div class="field-row">
+          <input type="range" id="fillLevel" min="0" max="100" value="35">
+          <span class="readout" id="fillLevelVal">35%</span>
+        </div>
+        <p class="hint">Simulasi sensor ultrasonik yang mengukur ruang tersisa dalam bin.</p>
+
+        <label for="gasLevel">Kadar Gas / Bau (ppm)</label>
+        <div class="field-row">
+          <input type="range" id="gasLevel" min="0" max="300" value="60">
+          <span class="readout" id="gasLevelVal">60 ppm</span>
+        </div>
+        <p class="hint">Simulasi sensor gas (MQ-135) untuk mendeteksi dekomposisi sampah organik.</p>
+
+        <button class="primary" id="logBtn">Catat &amp; Kirim Data</button>
+      </div>
+
+      <div class="card" style="margin-top:24px;">
+        <h3>Indikator Status <span class="tag">Simulasi Aktuator</span></h3>
+        <div class="bin-wrap">
+          <svg id="binGauge" viewBox="0 0 120 150">
+            <path d="M20 30 L28 145 Q30 150 35 150 L85 150 Q90 150 92 145 L100 30 Z"
+                  fill="none" stroke="var(--forest)" stroke-width="4" stroke-linejoin="round"/>
+            <clipPath id="binClip">
+              <path d="M23 33 L30 145 Q31 148 35 148 L85 148 Q89 148 90 145 L97 33 Z"/>
+            </clipPath>
+            <rect id="binFill" x="20" y="150" width="80" height="0" clip-path="url(#binClip)" fill="var(--organic)" style="transition:y .5s ease, height .5s ease, fill .5s ease;"/>
+            <rect x="12" y="18" width="96" height="16" rx="6" fill="var(--forest)"/>
+            <rect x="40" y="6" width="40" height="12" rx="4" fill="var(--forest)"/>
+            <text id="binPct" x="60" y="100" text-anchor="middle" font-family="JetBrains Mono, monospace" font-weight="700" font-size="20" fill="var(--ink)">35%</text>
+          </svg>
+        </div>
+        <div class="status-box" id="statusBox">
+          <div class="icon" id="statusIcon">🟢</div>
+          <div class="label" id="statusLabel">NORMAL</div>
+          <div class="sub" id="statusSub">Bin dalam kondisi aman</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Chart -->
+    <div class="card chart-card">
+      <h3>Visualisasi Data <span class="tag">Grafik Real-time</span></h3>
+      <canvas id="liveChart"></canvas>
+      <p class="hint" style="margin-top:14px;">Grafik garis (line chart) menggunakan Chart.js, bergerak dinamis setiap kali data baru dicatat.</p>
+    </div>
+  </div>
+
+  <!-- HISTORY LOG -->
+  <div class="card history-card">
+    <h3>History Log <span class="tag">Catatan Riwayat</span></h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Waktu</th>
+          <th>Ketinggian</th>
+          <th>Gas</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="historyBody">
+        <tr class="empty-row"><td colspan="4">Belum ada data. Klik "Catat &amp; Kirim Data" untuk mulai mencatat.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<footer>TrashTrack Dashboard — Data disimulasikan untuk keperluan demonstrasi</footer>
+
+<script>
+// ---------- Clock ----------
+function updateClock(){
+  const now = new Date();
+  document.getElementById('clockTime').textContent = now.toLocaleTimeString('id-ID');
+  document.getElementById('clockDate').textContent = now.toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'});
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// ---------- Elements ----------
+const fillLevel = document.getElementById('fillLevel');
+const fillLevelVal = document.getElementById('fillLevelVal');
+const gasLevel = document.getElementById('gasLevel');
+const gasLevelVal = document.getElementById('gasLevelVal');
+const logBtn = document.getElementById('logBtn');
+const historyBody = document.getElementById('historyBody');
+
+const statusBox = document.getElementById('statusBox');
+const statusIcon = document.getElementById('statusIcon');
+const statusLabel = document.getElementById('statusLabel');
+const statusSub = document.getElementById('statusSub');
+
+const binFill = document.getElementById('binFill');
+const binPct = document.getElementById('binPct');
+
+const BIN_TOP = 33;
+const BIN_BOTTOM = 148;
+const BIN_HEIGHT = BIN_BOTTOM - BIN_TOP;
+
+fillLevel.addEventListener('input', () => {
+  fillLevelVal.textContent = fillLevel.value + '%';
+  updateBinGauge();
+});
+gasLevel.addEventListener('input', () => {
+  gasLevelVal.textContent = gasLevel.value + ' ppm';
+});
+
+function updateBinGauge(){
+  const pct = parseInt(fillLevel.value);
+  const h = (pct/100) * BIN_HEIGHT;
+  binFill.setAttribute('y', BIN_BOTTOM - h);
+  binFill.setAttribute('height', h);
+  binPct.textContent = pct + '%';
+  let color = 'var(--organic)';
+  if(pct > 80) color = 'var(--alert)';
+  else if(pct > 50) color = 'var(--residual)';
+  binFill.style.fill = color;
+}
+updateBinGauge();
+
+// ---------- Status logic (if-else, simulasi aktuator) ----------
+function evaluateStatus(pct, gas){
+  if(pct > 80 || gas > 200){
+    return {
+      key:'penuh', icon:'🔴', label:'PENUH — PERLU DIANGKUT',
+      sub: gas > 200 ? 'Kadar gas tinggi, indikasi pembusukan' : 'Kapasitas bin hampir habis',
+      bg:'#F6D9CF', fg:'var(--alert)', pill:'var(--alert)'
+    };
+  } else if(pct > 50 || gas > 100){
+    return {
+      key:'pantau', icon:'🟡', label:'PERLU DIPANTAU',
+      sub:'Mendekati ambang batas, pantau berkala',
+      bg:'#F7E7C4', fg:'#8A5A0A', pill:'var(--residual)'
+    };
+  } else {
+    return {
+      key:'normal', icon:'🟢', label:'NORMAL',
+      sub:'Bin dalam kondisi aman',
+      bg:'#DCEBDD', fg:'var(--forest)', pill:'var(--organic)'
+    };
+  }
+}
+
+function applyStatus(){
+  const pct = parseInt(fillLevel.value);
+  const gas = parseInt(gasLevel.value);
+  const s = evaluateStatus(pct, gas);
+  statusIcon.textContent = s.icon;
+  statusLabel.textContent = s.label;
+  statusSub.textContent = s.sub;
+  statusBox.style.background = s.bg;
+  statusLabel.style.color = s.fg;
+  statusSub.style.color = s.fg;
+  return s;
+}
+applyStatus();
+fillLevel.addEventListener('input', applyStatus);
+gasLevel.addEventListener('input', applyStatus);
+
+// ---------- Chart ----------
+const ctx = document.getElementById('liveChart').getContext('2d');
+const liveChart = new Chart(ctx, {
+  type:'line',
+  data:{
+    labels:[],
+    datasets:[
+      {
+        label:'Ketinggian Sampah (%)',
+        data:[],
+        borderColor:'#5A8F3C',
+        backgroundColor:'rgba(90,143,60,0.12)',
+        tension:0.35,
+        fill:true,
+        pointRadius:3,
+        pointBackgroundColor:'#5A8F3C',
+        yAxisID:'y'
+      },
+      {
+        label:'Gas / Bau (ppm)',
+        data:[],
+        borderColor:'#2D6E8E',
+        backgroundColor:'rgba(45,110,142,0.10)',
+        tension:0.35,
+        fill:true,
+        pointRadius:3,
+        pointBackgroundColor:'#2D6E8E',
+        yAxisID:'y1'
+      }
+    ]
+  },
+  options:{
+    responsive:true,
+    interaction:{mode:'index', intersect:false},
+    plugins:{
+      legend:{position:'bottom', labels:{font:{family:'Space Grotesk', size:11}}}
+    },
+    scales:{
+      y:{ min:0, max:100, title:{display:true, text:'%', font:{family:'JetBrains Mono'}} },
+      y1:{ min:0, max:300, position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'ppm', font:{family:'JetBrains Mono'}} }
+    }
+  }
+});
+
+// ---------- Logging ----------
+let logCount = 0;
+logBtn.addEventListener('click', () => {
+  const pct = parseInt(fillLevel.value);
+  const gas = parseInt(gasLevel.value);
+  const s = applyStatus();
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('id-ID') + ' · ' + now.toLocaleDateString('id-ID',{day:'2-digit',month:'short'});
+
+  // Chart update
+  liveChart.data.labels.push(now.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit', second:'2-digit'}));
+  liveChart.data.datasets[0].data.push(pct);
+  liveChart.data.datasets[1].data.push(gas);
+  if(liveChart.data.labels.length > 12){
+    liveChart.data.labels.shift();
+    liveChart.data.datasets[0].data.shift();
+    liveChart.data.datasets[1].data.shift();
+  }
+  liveChart.update();
+
+  // History table
+  logCount++;
+  if(logCount === 1){ historyBody.innerHTML = ''; }
+  const row = document.createElement('tr');
+  row.innerHTML = `
+    <td>${timeStr}</td>
+    <td>${pct}%</td>
+    <td>${gas} ppm</td>
+    <td><span class="pill" style="background:${s.pill}">${s.label}</span></td>
+  `;
+  historyBody.prepend(row);
+
+  // Button feedback
+  logBtn.textContent = 'Tersimpan ✓';
+  setTimeout(()=>{ logBtn.textContent = 'Catat & Kirim Data'; }, 900);
+});
+</script>
+</body>
+</html>
